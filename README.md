@@ -15,7 +15,7 @@ templates or create repositories itself — that's a future scaffolding executor
 
 | Scaffold | Path | Description |
 |---|---|---|
-| `golang-service` | `templates/golang-service` | Minimal Go HTTP service: server skeleton, Dockerfile, Helm chart, CI workflow |
+| `golang-service` | `templates/golang-service` | Minimal Go HTTP service: server skeleton, Dockerfile, Helm chart (Deployment + Service), CI workflow with GHCR image push |
 
 ## Directory structure
 
@@ -74,7 +74,23 @@ This repo intentionally does not implement or depend on a specific rendering eng
 the placeholder syntax is simple enough for a renderer to satisfy with straight string
 substitution, a text/template engine, or anything else a future scaffolding executor
 chooses. `.tpl` → real filename (`go.mod.tpl` → `go.mod`) is the only other rule a
-renderer needs to follow.
+renderer needs to follow. A renderer only needs to replace the exact, known parameter
+names (`componentName`, `repositoryName`, `owner`) — it must not try to parse or
+evaluate every `{{ ... }}` it finds in a file.
+
+That last point matters concretely in `.github/workflows/ci.yaml.tpl` and
+`chart/templates/*.yaml`, both of which contain `{{ }}`-delimited syntax that belongs
+to a *different* engine and must survive scaffold rendering untouched:
+
+- `chart/templates/deployment.yaml` and `service.yaml` are plain Helm templates
+  (`{{ .Chart.Name }}`, `{{ .Values.image.repository }}`, ...), rendered by Helm at
+  install time, not by the scaffold renderer — so they're checked in without a `.tpl`
+  suffix and are never touched by scaffold rendering at all.
+- `ci.yaml.tpl` mixes both: `{{ owner }}` / `{{ repositoryName }}` are scaffold
+  placeholders (rendered once, at scaffold time), while `${{ github.sha }}` and
+  `${{ secrets.GITHUB_TOKEN }}` are GitHub Actions' own expression syntax (evaluated
+  later, at workflow run time). They coexist safely only because scaffold rendering
+  does exact-name substitution rather than blindly matching any `{{ ... }}`.
 
 Example substitutions:
 
