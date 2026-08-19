@@ -78,19 +78,23 @@ renderer needs to follow. A renderer only needs to replace the exact, known para
 names (`componentName`, `repositoryName`, `owner`) — it must not try to parse or
 evaluate every `{{ ... }}` it finds in a file.
 
-That last point matters concretely in `.github/workflows/ci.yaml.tpl` and
-`chart/templates/*.yaml`, both of which contain `{{ }}`-delimited syntax that belongs
-to a *different* engine and must survive scaffold rendering untouched:
+That last point matters concretely for `chart/templates/*.yaml`, which contains
+`{{ }}`-delimited syntax that belongs to a *different* engine and must survive scaffold
+rendering untouched: `deployment.yaml` and `service.yaml` are plain Helm templates
+(`{{ .Chart.Name }}`, `{{ .Values.image.repository }}`, ...), rendered by Helm at
+install time, not by the scaffold renderer — so they're checked in without a `.tpl`
+suffix and are never touched by scaffold rendering at all.
 
-- `chart/templates/deployment.yaml` and `service.yaml` are plain Helm templates
-  (`{{ .Chart.Name }}`, `{{ .Values.image.repository }}`, ...), rendered by Helm at
-  install time, not by the scaffold renderer — so they're checked in without a `.tpl`
-  suffix and are never touched by scaffold rendering at all.
-- `ci.yaml.tpl` mixes both: `{{ owner }}` / `{{ repositoryName }}` are scaffold
-  placeholders (rendered once, at scaffold time), while `${{ github.sha }}` and
-  `${{ secrets.GITHUB_TOKEN }}` are GitHub Actions' own expression syntax (evaluated
-  later, at workflow run time). They coexist safely only because scaffold rendering
-  does exact-name substitution rather than blindly matching any `{{ ... }}`.
+`.github/workflows/ci.yaml` avoids the same collision a different way: it's checked in
+without a `.tpl` suffix and contains **no scaffold placeholders at all**. It derives
+the image name entirely from GitHub Actions' own `github.repository` context
+(`owner/repo`, lowercased) at workflow run time, rather than from `owner` /
+`repositoryName` baked in at scaffold time — so it needs zero rendering and works
+identically regardless of which account or org actually owns the generated repository.
+`owner` is still a required scaffold parameter, but only for `go.mod.tpl`'s module path
+and `values.yaml.tpl`'s default image repository — neither Go modules nor Helm have
+access to GitHub Actions context, so those two genuinely need it substituted once at
+scaffold time.
 
 Example substitutions:
 
