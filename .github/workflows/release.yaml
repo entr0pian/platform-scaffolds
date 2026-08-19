@@ -1,0 +1,38 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "*/v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-tag-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag version matches scaffold.yaml
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"    # e.g. golang-service/v0.1.0
+          SCAFFOLD="${TAG%/*}"        # golang-service
+          TAG_VERSION="${TAG##*/v}"   # 0.1.0
+
+          SCAFFOLD_FILE="templates/${SCAFFOLD}/scaffold.yaml"
+          if [ ! -f "$SCAFFOLD_FILE" ]; then
+            echo "::error::No scaffold.yaml found at $SCAFFOLD_FILE for tag $TAG"
+            exit 1
+          fi
+
+          FILE_VERSION="$(grep -m1 '^version:' "$SCAFFOLD_FILE" | awk '{print $2}' | tr -d '"')"
+
+          if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag $TAG declares version $TAG_VERSION but $SCAFFOLD_FILE has version $FILE_VERSION"
+            exit 1
+          fi
+
+          echo "OK: $SCAFFOLD_FILE version ($FILE_VERSION) matches tag $TAG"

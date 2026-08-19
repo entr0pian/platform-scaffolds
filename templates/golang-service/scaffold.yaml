@@ -1,0 +1,19 @@
+name: golang-service
+description: Minimal Go HTTP service scaffold — server skeleton, Dockerfile, Helm chart, and CI workflow.
+version: 0.1.0
+
+parameters:
+  componentName:
+    type: string
+    required: true
+    description: Component identity; used for the service/binary name, Helm chart name, and Kubernetes resource names.
+
+  repositoryName:
+    type: string
+    required: true
+    description: Name of the generated Git repository; used to derive the Go module path (github.com/{owner}/{repositoryName}).
+
+  owner:
+    type: string
+    required: true
+    description: GitHub org or user the generated repository belongs to; also used in the Go module path.
