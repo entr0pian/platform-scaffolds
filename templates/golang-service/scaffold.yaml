@@ -11,9 +11,17 @@ parameters:
   repositoryName:
     type: string
     required: true
-    description: Name of the generated Git repository; used to derive the Go module path (github.com/{owner}/{repositoryName}).
+    description: >-
+      Name of the generated Git repository; used to derive the Go module path
+      (github.com/{owner}/{repositoryName}) and, via values.yaml's default image
+      repository, must match the GitHub repo name exactly. Must be lowercase — the CI
+      workflow always publishes to a lowercased ghcr.io path, and an uppercase value
+      here would make the chart's default image reference not match what CI actually
+      pushed.
 
   owner:
     type: string
     required: true
-    description: GitHub org or user the generated repository belongs to; also used in the Go module path.
+    description: >-
+      GitHub org or user the generated repository belongs to; also used in the Go
+      module path. Must be lowercase, for the same reason as repositoryName above.
