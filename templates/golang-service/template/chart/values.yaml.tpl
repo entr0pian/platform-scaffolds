@@ -9,3 +9,7 @@ service:
   port: 8080
 
 resources: {}
+
+database:
+  enabled: false
+  secretName: ""
