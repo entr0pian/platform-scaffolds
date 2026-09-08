@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
@@ -42,14 +44,20 @@ func main() {
 	}
 }
 
-// connectDB returns nil when DB_HOST is unset — the database capability is
-// disabled (chart's database.enabled=false), not a connection failure.
-// It does not ping at startup: a fresh pod shouldn't crash-loop waiting on a
-// database that's still provisioning. /readyz is what actually checks
-// reachability, on demand.
+// connectDB returns nil when the database binding isn't mounted — the
+// database capability is disabled (chart's bindings.database absent), not a
+// connection failure. It does not ping at startup: a fresh pod shouldn't
+// crash-loop waiting on a database that's still provisioning. /readyz is
+// what actually checks reachability, on demand.
 func connectDB() *sql.DB {
-	host := os.Getenv("DB_HOST")
-	if host == "" {
+	root := os.Getenv("SERVICE_BINDING_ROOT")
+	if root == "" {
+		root = "/bindings"
+	}
+	dir := filepath.Join(root, "database")
+
+	host, err := readBindingFile(dir, "endpoint")
+	if err != nil {
 		return nil
 	}
 
@@ -57,13 +65,13 @@ func connectDB() *sql.DB {
 	if sslmode == "" {
 		sslmode = "require"
 	}
+	port, _ := readBindingFile(dir, "port")
+	user, _ := readBindingFile(dir, "username")
+	password, _ := readBindingFile(dir, "password")
+	name, _ := readBindingFile(dir, "dbname")
+
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		host,
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"),
-		sslmode,
+		host, port, user, password, name, sslmode,
 	)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
@@ -71,4 +79,14 @@ func connectDB() *sql.DB {
 		return nil
 	}
 	return db
+}
+
+// readBindingFile reads one key from a mounted binding directory, per the
+// $SERVICE_BINDING_ROOT/<binding>/<key> file convention.
+func readBindingFile(dir, name string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
 }

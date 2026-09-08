@@ -1,6 +1,6 @@
 name: golang-service
 description: Minimal Go HTTP service scaffold — server skeleton, Dockerfile, Helm chart, and CI workflow.
-version: 0.3.0
+version: 0.4.0
 
 parameters:
   componentName:

@@ -14,7 +14,7 @@ make run
 
 - `GET /healthz` — liveness; always `200`, no dependencies checked.
 - `GET /readyz` — readiness; `200` if the database is unconfigured or reachable,
-  `503` if `database.enabled` is on but the database can't be reached.
+  `503` if `bindings.database` is set but the database can't be reached.
 
 ## Deployment
 

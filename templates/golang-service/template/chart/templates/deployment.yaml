@@ -30,31 +30,18 @@ spec:
             httpGet:
               path: /readyz
               port: {{ .Values.service.port }}
-        {{- if .Values.database.enabled }}
+        {{- if .Values.bindings.database }}
           env:
-            - name: DB_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.database.secretName }}
-                  key: endpoint
-            - name: DB_PORT
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.database.secretName }}
-                  key: port
-            - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.database.secretName }}
-                  key: username
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.database.secretName }}
-                  key: password
-            - name: DB_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.database.secretName }}
-                  key: dbname
+            - name: SERVICE_BINDING_ROOT
+              value: /bindings
+          volumeMounts:
+            - name: binding-database
+              mountPath: /bindings/database
+              readOnly: true
         {{- end }}
+      {{- if .Values.bindings.database }}
+      volumes:
+        - name: binding-database
+          secret:
+            secretName: {{ .Chart.Name }}-binding-database
+      {{- end }}

@@ -10,6 +10,4 @@ service:
 
 resources: {}
 
-database:
-  enabled: false
-  secretName: ""
+bindings: {}
