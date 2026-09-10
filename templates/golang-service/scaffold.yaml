@@ -1,6 +1,6 @@
 name: golang-service
 description: Minimal Go HTTP service scaffold — server skeleton, Dockerfile, Helm chart, and CI workflow.
-version: 0.4.0
+version: 0.5.0
 
 parameters:
   componentName:
@@ -25,3 +25,11 @@ parameters:
     description: >-
       GitHub org or user the generated repository belongs to; also used in the Go
       module path. Must be lowercase, for the same reason as repositoryName above.
+
+  componentOwner:
+    type: string
+    required: true
+    description: >-
+      Team responsible for the component (the platform Component's spec.owner) —
+      distinct from `owner` above, which is the GitHub org/user the repository lives
+      under. Used only for catalog-info.yaml's spec.owner.

@@ -15,7 +15,7 @@ templates or create repositories itself — that's a future scaffolding executor
 
 | Scaffold | Path | Description |
 |---|---|---|
-| `golang-service` | `templates/golang-service` | Minimal Go HTTP service: server skeleton, Dockerfile, Helm chart (Deployment + Service), CI workflow with GHCR image push |
+| `golang-service` | `templates/golang-service` | Minimal Go HTTP service: server skeleton, Dockerfile, Helm chart (Deployment + Service), CI workflow with GHCR image push, `catalog-info.yaml` for Backstage discovery |
 
 ## Directory structure
 
@@ -52,6 +52,10 @@ parameters:
   owner:
     type: string
     required: true
+
+  componentOwner:
+    type: string
+    required: true
 ```
 
 `parameters` is the contract a caller (eventually `component-operator`, see below) must
@@ -62,6 +66,7 @@ satisfy to render the scaffold. `golang-service` currently requires:
 | `componentName` | Service/binary name, Helm chart name, Kubernetes resource names |
 | `repositoryName` | Go module path (`github.com/{owner}/{repositoryName}`) |
 | `owner` | GitHub org/user the generated repository belongs to; also used in the module path |
+| `componentOwner` | The platform Component's team owner (distinct from `owner`, the GitHub org/user); rendered into `catalog-info.yaml`'s `spec.owner` |
 
 ## Templating
 
