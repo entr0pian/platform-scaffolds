@@ -4,6 +4,12 @@ metadata:
   name: {{ .Chart.Name }}
   labels:
     app.kubernetes.io/name: {{ .Chart.Name }}
+    {{- with .Values.platform.component }}
+    platform.taskapp.io/component: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.platform.environment }}
+    platform.taskapp.io/environment: {{ . | quote }}
+    {{- end }}
 spec:
   type: ClusterIP
   selector:
