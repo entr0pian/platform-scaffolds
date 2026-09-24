@@ -3,6 +3,17 @@ apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
   name: {{ .Chart.Name }}-binding-database
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    {{- with .Values.platform.component }}
+    platform.taskapp.io/component: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.platform.environment }}
+    platform.taskapp.io/environment: {{ . | quote }}
+    {{- end }}
+    # Which Release binding this materialises — lets the platform join
+    # Release spec.bindings.<name> to its ExternalSecret by label, not name.
+    platform.taskapp.io/binding: database
 spec:
   refreshInterval: 1h
   secretStoreRef:
