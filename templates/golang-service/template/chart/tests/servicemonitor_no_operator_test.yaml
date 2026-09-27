@@ -1,0 +1,10 @@
+# Separate suite: test-level capabilities add to a suite's, so the "API not
+# served" case can't live alongside servicemonitor_test.yaml's.
+suite: ServiceMonitor without Prometheus Operator
+templates:
+  - templates/servicemonitor.yaml
+tests:
+  - it: is not rendered when the cluster doesn't serve monitoring.coreos.com/v1
+    asserts:
+      - hasDocuments:
+          count: 0

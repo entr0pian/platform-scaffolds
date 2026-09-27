@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	_ "github.com/lib/pq"
+
+	"github.com/{{ owner }}/{{ repositoryName }}/internal/metrics"
 )
 
 func main() {
@@ -18,7 +20,26 @@ func main() {
 		defer db.Close()
 	}
 
+	log.Println("{{ componentName }} listening on :8080")
+	if err := http.ListenAndServe(":8080", newHandler(db)); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// newHandler builds the service's HTTP handler. db may be nil (no database
+// binding); every endpoint, /metrics included, works either way.
+func newHandler(db *sql.DB) http.Handler {
+	reg := metrics.NewRegistry()
+	metrics.RegisterDB(reg, db)
+	httpMetrics := metrics.NewHTTP(reg)
+
 	mux := http.NewServeMux()
+
+	// Register application routes on mux. Use patterns with wildcards
+	// ("GET /orders/{id}") rather than parsing paths by hand: the matched
+	// pattern is what the http_requests_total route label records.
+
+	mux.Handle("/metrics", metrics.Handler(reg))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
@@ -38,10 +59,9 @@ func main() {
 		w.Write([]byte("ok: database reachable"))
 	})
 
-	log.Println("{{ componentName }} listening on :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
-		log.Fatal(err)
-	}
+	// Probes and scrapes aren't service traffic; keep them out of the
+	// request metrics.
+	return httpMetrics.Middleware(mux, "/healthz", "/readyz", "/metrics")
 }
 
 // connectDB returns nil when the database binding isn't mounted — the

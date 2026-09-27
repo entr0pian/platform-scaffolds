@@ -25,8 +25,25 @@ jobs:
       - name: Test
         run: go test ./...
 
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Lint
+        run: helm lint chart
+
+      - name: Unit tests
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.1.2
+          helm unittest chart
+
   push-image:
-    needs: build
+    needs: [build, chart]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:

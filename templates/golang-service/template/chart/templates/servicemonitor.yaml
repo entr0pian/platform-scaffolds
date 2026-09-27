@@ -1,0 +1,33 @@
+{{- if and .Values.observability.metrics.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Chart.Name }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    {{- with .Values.platform.component }}
+    platform.taskapp.io/component: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.platform.environment }}
+    platform.taskapp.io/environment: {{ . | quote }}
+    {{- end }}
+spec:
+  # No namespaceSelector: only this release's namespace is searched.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
+  endpoints:
+    - port: http
+      path: {{ .Values.observability.metrics.path }}
+      interval: {{ .Values.observability.metrics.interval }}
+      # Copy the Service's platform identity labels onto every scraped
+      # series as plain `component` / `environment`, so queries read
+      # http_requests_total{component="orders", environment="dev"}. The
+      # application itself never knows either value. A Service without the
+      # labels (chart installed outside the platform) gets neither label.
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_service_label_platform_taskapp_io_component]
+          targetLabel: component
+        - sourceLabels: [__meta_kubernetes_service_label_platform_taskapp_io_environment]
+          targetLabel: environment
+{{- end }}

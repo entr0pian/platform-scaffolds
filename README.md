@@ -15,7 +15,7 @@ templates or create repositories itself — that's a future scaffolding executor
 
 | Scaffold | Path | Description |
 |---|---|---|
-| `golang-service` | `templates/golang-service` | Minimal Go HTTP service: server skeleton, Dockerfile, Helm chart (Deployment + Service), CI workflow with GHCR image push, `catalog-info.yaml` for Backstage discovery |
+| `golang-service` | `templates/golang-service` | Minimal Go 1.27 HTTP service: server skeleton with `/healthz`, `/readyz` and Prometheus `/metrics` (runtime, process, HTTP request and DB pool metrics), Dockerfile, Helm chart (Deployment + Service + ServiceMonitor), CI workflow with Go/chart tests and GHCR image push, `catalog-info.yaml` for Backstage discovery |
 
 ## Directory structure
 
@@ -90,6 +90,11 @@ rendering untouched: `deployment.yaml` and `service.yaml` are plain Helm templat
 install time, not by the scaffold renderer — so they're checked in without a `.tpl`
 suffix and are never touched by scaffold rendering at all.
 
+The same applies to `chart/templates/servicemonitor.yaml`. The chart's helm-unittest
+suite goes the other way: `chart/tests/servicemonitor_test.yaml.tpl` *is* a `.tpl`,
+because its assertions need the rendered chart name (`{{ componentName }}`) and
+contain no other `{{ }}` syntax.
+
 `.github/workflows/ci.yaml` avoids the same collision a different way: it's checked in
 without a `.tpl` suffix and contains **no scaffold placeholders at all**. It derives
 the image name entirely from GitHub Actions' own `github.repository` context
@@ -108,6 +113,22 @@ Example substitutions:
 | `go.mod.tpl` | `module github.com/entr0pian/orders` |
 | `README.md.tpl` | `# orders` |
 | `chart/Chart.yaml.tpl` | `name: orders` |
+
+## Validating a scaffold locally
+
+`scripts/render.py` renders a scaffold the way scaffold-operator does (`.tpl`
+suffix stripped, exact `{{ param }}` placeholders substituted, everything else
+copied byte-for-byte), so a change can be tested on a real generated repository
+before it's tagged:
+
+```bash
+scripts/render.py golang-service /tmp/orders \
+  componentName=orders repositoryName=orders owner=entr0pian componentOwner=team-a
+cd /tmp/orders
+go test ./...            # Go 1.27
+helm lint chart && helm unittest chart
+docker build -t orders .
+```
 
 ## Versioning
 
