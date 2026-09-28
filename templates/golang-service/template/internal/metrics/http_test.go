@@ -49,6 +49,20 @@ func TestRouteLabelIsPatternNotPath(t *testing.T) {
 	}
 }
 
+func TestExactMatchPatternLabel(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := NewHTTP(reg)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {})
+	h := m.Middleware(mux)
+
+	serve(h, http.MethodGet, "/")
+
+	if got := testutil.ToFloat64(m.requests.WithLabelValues("GET", "/", "200")); got != 1 {
+		t.Fatalf(`http_requests_total{route="/"} = %v, want 1`, got)
+	}
+}
+
 func TestStatusLabel(t *testing.T) {
 	m, _, h := newTestServer(t)
 

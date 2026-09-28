@@ -85,7 +85,8 @@ func routeOf(r *http.Request) string {
 	if i < 0 {
 		return unmatchedRoute
 	}
-	return r.Pattern[i:]
+	// "{$}" only anchors a pattern to an exact path: "GET /{$}" is "/".
+	return strings.TrimSuffix(r.Pattern[i:], "{$}")
 }
 
 // normalizeMethod maps anything outside the standard methods to "OTHER":

@@ -12,6 +12,9 @@ make run
 
 ## Endpoints
 
+- `GET /` — index: JSON with the service name and the endpoints below. It reads
+  from the `endpoints` list in `cmd/server/main.go`; add to that list whenever you
+  register a route.
 - `GET /healthz` — liveness; always `200`, no dependencies checked.
 - `GET /readyz` — readiness; `200` if the database is unconfigured or reachable,
   `503` if `bindings.database` is set but the database can't be reached.
@@ -42,7 +45,12 @@ here. They come from the cluster's own monitoring stack.
 
 ## Deployment
 
-Helm chart lives in `chart/`; `helm unittest chart` runs its tests
+Helm chart lives in `chart/`. It sets CPU/memory requests and limits by
+default (`resources` in `values.yaml`); tune them to the service's real usage,
+but keep limits set: the platform's utilization metrics divide usage by the
+container's limit, so a container without one has no utilization percentage.
+
+`helm unittest chart` `helm unittest chart` runs its tests
 ([helm-unittest](https://github.com/helm-unittest/helm-unittest) plugin).
 
 With `observability.metrics.enabled` (default `true`), the chart adds a

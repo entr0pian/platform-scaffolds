@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -26,6 +27,22 @@ func main() {
 	}
 }
 
+// endpoint is one entry in the index served at /.
+type endpoint struct {
+	Method      string `json:"method"`
+	Path        string `json:"path"`
+	Description string `json:"description"`
+}
+
+// endpoints is the service's self-description, served at /. Add an entry
+// whenever you register a route on the mux in newHandler.
+var endpoints = []endpoint{
+	{"GET", "/", "This index: the service's name and endpoints."},
+	{"GET", "/healthz", "Liveness: always 200, no dependencies checked."},
+	{"GET", "/readyz", "Readiness: 503 if a configured database is unreachable."},
+	{"GET", "/metrics", "Prometheus metrics: runtime, process, HTTP and database pool."},
+}
+
 // newHandler builds the service's HTTP handler. db may be nil (no database
 // binding); every endpoint, /metrics included, works either way.
 func newHandler(db *sql.DB) http.Handler {
@@ -39,6 +56,20 @@ func newHandler(db *sql.DB) http.Handler {
 	// ("GET /orders/{id}") rather than parsing paths by hand: the matched
 	// pattern is what the http_requests_total route label records.
 
+	// "/{$}" matches only "/" itself; a bare "/" would catch every
+	// unregistered path.
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(struct {
+			Service   string     `json:"service"`
+			Message   string     `json:"message"`
+			Endpoints []endpoint `json:"endpoints"`
+		}{
+			Service:   "{{ componentName }}",
+			Message:   "This is the {{ componentName }} service.",
+			Endpoints: endpoints,
+		})
+	})
 	mux.Handle("/metrics", metrics.Handler(reg))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

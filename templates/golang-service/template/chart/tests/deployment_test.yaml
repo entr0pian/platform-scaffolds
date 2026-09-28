@@ -1,0 +1,23 @@
+suite: Deployment
+templates:
+  - templates/deployment.yaml
+tests:
+  - it: sets CPU and memory requests and limits by default
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+
+  - it: takes resources from values
+    set:
+      resources.limits.memory: 512Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 512Mi

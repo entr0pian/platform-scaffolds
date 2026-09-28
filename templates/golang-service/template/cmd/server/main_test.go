@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -57,6 +58,55 @@ func TestWithoutDatabase(t *testing.T) {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("/metrics unexpectedly contains %q", unwanted)
 		}
+	}
+}
+
+func TestIndex(t *testing.T) {
+	t.Setenv("SERVICE_BINDING_ROOT", t.TempDir())
+	h := newHandler(connectDB())
+
+	rec := get(t, h, "/")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/ = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("/ Content-Type = %q, want application/json", ct)
+	}
+	var index struct {
+		Service   string     `json:"service"`
+		Message   string     `json:"message"`
+		Endpoints []endpoint `json:"endpoints"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &index); err != nil {
+		t.Fatalf("/ body is not JSON: %v", err)
+	}
+	if index.Service == "" || !strings.Contains(index.Message, index.Service) {
+		t.Errorf("/ service = %q, message = %q", index.Service, index.Message)
+	}
+
+	// Every listed endpoint must actually be served.
+	for _, e := range index.Endpoints {
+		if rec := get(t, h, e.Path); rec.Code == http.StatusNotFound {
+			t.Errorf("/ lists %s %s, but it returns 404", e.Method, e.Path)
+		}
+	}
+	for _, want := range []string{"/", "/healthz", "/readyz", "/metrics"} {
+		found := false
+		for _, e := range index.Endpoints {
+			found = found || e.Path == want
+		}
+		if !found {
+			t.Errorf("/ does not list %s", want)
+		}
+	}
+
+	// "/" is exact: other paths still 404 rather than falling through to it.
+	if rec := get(t, h, "/no-such-route"); rec.Code != http.StatusNotFound {
+		t.Errorf("/no-such-route = %d, want 404", rec.Code)
+	}
+	out := get(t, h, "/metrics").Body.String()
+	if !strings.Contains(out, `http_requests_total{method="GET",route="/",status="200"}`) {
+		t.Error(`/metrics missing route="/" for the index`)
 	}
 }
 

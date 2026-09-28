@@ -8,7 +8,17 @@ image:
 service:
   port: 8080
 
-resources: {}
+# Sized for a small Go HTTP service. Limits also give the platform's
+# utilization metrics (platform:container_{cpu,memory}_limit_*) a
+# denominator: a container without limits has no utilization percentage.
+# No LimitRange backfills them on every cluster, so set them here.
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 128Mi
 
 bindings: {}
 
