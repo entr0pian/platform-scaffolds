@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,7 +25,7 @@ func TestWithoutDatabase(t *testing.T) {
 	if db != nil {
 		t.Fatal("connectDB() returned a DB with no binding mounted")
 	}
-	h := newHandler(db)
+	h := newHandler(db, newLogger(io.Discard))
 
 	if rec := get(t, h, "/healthz"); rec.Code != http.StatusOK {
 		t.Errorf("/healthz = %d, want 200", rec.Code)
@@ -63,7 +65,7 @@ func TestWithoutDatabase(t *testing.T) {
 
 func TestIndex(t *testing.T) {
 	t.Setenv("SERVICE_BINDING_ROOT", t.TempDir())
-	h := newHandler(connectDB())
+	h := newHandler(connectDB(), newLogger(io.Discard))
 
 	rec := get(t, h, "/")
 	if rec.Code != http.StatusOK {
@@ -137,7 +139,7 @@ func TestWithUnreachableDatabase(t *testing.T) {
 		t.Fatal("connectDB() = nil with a binding mounted")
 	}
 	defer db.Close()
-	h := newHandler(db)
+	h := newHandler(db, newLogger(io.Discard))
 
 	if rec := get(t, h, "/healthz"); rec.Code != http.StatusOK {
 		t.Errorf("/healthz = %d, want 200", rec.Code)
@@ -160,5 +162,30 @@ func TestWithUnreachableDatabase(t *testing.T) {
 	}
 	if strings.Contains(out, "s3cret") || strings.Contains(out, "orders") {
 		t.Error("/metrics leaks database connection details")
+	}
+}
+
+func TestAccessLog(t *testing.T) {
+	t.Setenv("SERVICE_BINDING_ROOT", t.TempDir())
+	var buf bytes.Buffer
+	h := newHandler(connectDB(), newLogger(&buf))
+
+	get(t, h, "/")
+	get(t, h, "/healthz")
+	get(t, h, "/metrics")
+
+	out := strings.TrimSpace(buf.String())
+	if strings.Count(out, "\n") != 0 {
+		t.Fatalf("want exactly one log line (probes and scrapes skipped), got:\n%s", out)
+	}
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(out), &entry); err != nil {
+		t.Fatalf("log line is not JSON: %q: %v", out, err)
+	}
+	if entry["service"] == "" || entry["service"] == nil {
+		t.Errorf("log line has no service: %v", entry)
+	}
+	if entry["route"] != "/" || entry["status"] != float64(200) {
+		t.Errorf("log line = %v, want route / status 200", entry)
 	}
 }

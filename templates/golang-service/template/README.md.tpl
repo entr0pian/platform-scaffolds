@@ -43,6 +43,26 @@ with `{wildcards}`, and don't add labels carrying IDs, IPs or raw paths.
 Kubernetes-level metrics (pod CPU/memory, restarts, replicas) aren't exposed
 here. They come from the cluster's own monitoring stack.
 
+## Logs
+
+The service logs to stdout, one JSON object per line (`log/slog`'s JSON
+handler), so a collector such as Loki can parse fields without a per-service
+regex. Every line has `time`, `level`, `msg` and `service`. Log through `slog`
+(`slog.Info("order created", "order_id", id)`); the standard library's `log`
+package is routed through the same handler too.
+
+Every request except `/healthz`, `/readyz` and `/metrics` gets one access log
+line once it completes, from `internal/accesslog`:
+
+```json
+{"time":"2026-10-02T17:18:33.266900054+03:00","level":"INFO","msg":"http request","service":"{{ componentName }}","method":"GET","path":"/","route":"/","status":200,"duration_ms":0.18,"response_bytes":482,"remote_addr":"10.0.1.7:41932","user_agent":"k6/2.3.0","proto":"HTTP/1.1"}
+```
+
+`level` follows the status: `INFO` below 400, `WARN` for 4xx, `ERROR` for 5xx.
+`route` is the same value as the metrics' `route` label, so a log line can be
+matched to its series; `path` is the raw request path. The query string is never
+logged, since it can carry tokens.
+
 ## Deployment
 
 Helm chart lives in `chart/`. It sets CPU/memory requests and limits by

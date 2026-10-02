@@ -4,7 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
+	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,20 +13,38 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/{{ owner }}/{{ repositoryName }}/internal/accesslog"
 	"github.com/{{ owner }}/{{ repositoryName }}/internal/metrics"
 )
 
 func main() {
+	// Every line on stdout is one JSON object, so a log collector (e.g.
+	// Loki's) can parse fields without a per-service regex. SetDefault also
+	// routes the standard library's log package through this handler.
+	logger := newLogger(os.Stdout)
+	slog.SetDefault(logger)
+
 	db := connectDB()
 	if db != nil {
 		defer db.Close()
 	}
 
-	log.Println("{{ componentName }} listening on :8080")
-	if err := http.ListenAndServe(":8080", newHandler(db)); err != nil {
-		log.Fatal(err)
+	logger.Info("listening", "addr", ":8080")
+	if err := http.ListenAndServe(":8080", newHandler(db, logger)); err != nil {
+		logger.Error("server stopped", "error", err)
+		os.Exit(1)
 	}
 }
+
+// newLogger returns the service's JSON logger. Every line carries `service`,
+// so lines stay attributable after they leave the pod.
+func newLogger(w io.Writer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(w, nil)).With("service", "{{ componentName }}")
+}
+
+// probes are served but kept out of the request metrics and the access log:
+// they're kubelet and Prometheus traffic, not service traffic.
+var probes = []string{"/healthz", "/readyz", "/metrics"}
 
 // endpoint is one entry in the index served at /.
 type endpoint struct {
@@ -45,7 +64,7 @@ var endpoints = []endpoint{
 
 // newHandler builds the service's HTTP handler. db may be nil (no database
 // binding); every endpoint, /metrics included, works either way.
-func newHandler(db *sql.DB) http.Handler {
+func newHandler(db *sql.DB, logger *slog.Logger) http.Handler {
 	reg := metrics.NewRegistry()
 	metrics.RegisterDB(reg, db)
 	httpMetrics := metrics.NewHTTP(reg)
@@ -90,9 +109,9 @@ func newHandler(db *sql.DB) http.Handler {
 		w.Write([]byte("ok: database reachable"))
 	})
 
-	// Probes and scrapes aren't service traffic; keep them out of the
-	// request metrics.
-	return httpMetrics.Middleware(mux, "/healthz", "/readyz", "/metrics")
+	// Both middlewares read the route the mux matched, so the metrics
+	// middleware wraps the mux directly and passes the request through as-is.
+	return accesslog.Middleware(httpMetrics.Middleware(mux, probes...), logger, probes...)
 }
 
 // connectDB returns nil when the database binding isn't mounted — the
@@ -126,7 +145,7 @@ func connectDB() *sql.DB {
 	)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		log.Printf("database configured but failed to open: %v", err)
+		slog.Error("database configured but failed to open", "error", err)
 		return nil
 	}
 	return db

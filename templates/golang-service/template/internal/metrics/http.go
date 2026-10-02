@@ -59,7 +59,7 @@ func (m *HTTP) Middleware(mux *http.ServeMux, skip ...string) http.Handler {
 		// matched, so it's readable after ServeHTTP returns.
 		mux.ServeHTTP(sw, r)
 
-		route := routeOf(r)
+		route := Route(r)
 		if skipped[route] {
 			return
 		}
@@ -73,9 +73,12 @@ func (m *HTTP) Middleware(mux *http.ServeMux, skip ...string) http.Handler {
 	})
 }
 
-// routeOf reduces r.Pattern ("[METHOD ][HOST]/path") to its path part, so
+// Route reduces r.Pattern ("[METHOD ][HOST]/path") to its path part, so
 // "GET /orders/{id}" becomes "/orders/{id}"; the method is its own label.
-func routeOf(r *http.Request) string {
+// It is only meaningful after the mux has served r. Exported so the access
+// log records the same route value as the metrics, letting a log line and
+// its series be joined on it.
+func Route(r *http.Request) string {
 	// For CONNECT, ServeMux may report the raw request path as the
 	// pattern — not bounded, so don't trust it.
 	if r.Method == http.MethodConnect {
