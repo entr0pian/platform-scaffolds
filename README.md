@@ -106,6 +106,17 @@ and `values.yaml.tpl`'s default image repository — neither Go modules nor Helm
 access to GitHub Actions context, so those two genuinely need it substituted once at
 scaffold time.
 
+The workflow's **file name and behaviour are a contract** other platform pieces read,
+so keep them stable when changing it:
+
+- It must stay at `.github/workflows/ci.yaml`. Backstage's Create deployment Version
+  picker and release-operator's auto-deploy both look up "successful `ci.yaml` runs
+  triggered by a push to `main`" by that file name.
+- A successful push run on `main` must mean the image `ghcr.io/<owner>/<repo>:<commit
+  SHA>` exists. Auto-deploy deploys a run's head SHA as both the image tag and the chart
+  revision as soon as the run succeeds, with no person in the loop, so the image push
+  (`push-image`) has to be part of the same workflow run, not a separate workflow.
+
 Example substitutions:
 
 | Template | Rendered |
