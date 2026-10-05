@@ -52,6 +52,20 @@ podDisruptionBudget:
 
 bindings: {}
 
+# Public HTTPS endpoint: https://<component>.<environment>.<platform.domain>,
+# through the cluster's AWS Load Balancer Controller (one shared ALB per
+# environment) with DNS from external-dns and the certificate found in ACM by
+# hostname. Rendered only inside the platform (component and environment
+# set) and only in `environments`, the ones the wildcard certificate covers.
+# /metrics is answered with a 404 at the ALB, so only in-cluster Prometheus
+# reaches it.
+ingress:
+  enabled: true
+  environments: [dev, prod]
+  className: alb
+  # Added to (and overriding) the chart's ALB annotations.
+  annotations: {}
+
 # Prometheus scraping. Renders a ServiceMonitor for the Service's `http`
 # port, but only on clusters that serve the Prometheus Operator API
 # (monitoring.coreos.com/v1), so the chart still installs anywhere else.
@@ -70,3 +84,6 @@ observability:
 platform:
   component: ""
   environment: ""
+  # Base domain for the public hostname and the landing page's links to the
+  # developer portal (platform.<domain>) and Argo CD (argocd.<domain>).
+  domain: gerodimos.dev

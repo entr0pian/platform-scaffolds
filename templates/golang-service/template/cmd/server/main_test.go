@@ -189,3 +189,49 @@ func TestAccessLog(t *testing.T) {
 		t.Errorf("log line = %v, want route / status 200", entry)
 	}
 }
+
+func TestLandingPage(t *testing.T) {
+	t.Setenv("SERVICE_BINDING_ROOT", t.TempDir())
+	t.Setenv("PLATFORM_ENVIRONMENT", "dev")
+	t.Setenv("APP_VERSION", "0123456789abcdef0123456789abcdef01234567")
+	t.Setenv("PLATFORM_PORTAL_URL", "https://portal.example/catalog/default/component/svc")
+	t.Setenv("PLATFORM_DELIVERY_URL", "")
+	h := newHandler(connectDB(), newLogger(io.Discard))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/ (browser) = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("/ (browser) Content-Type = %q, want text/html", ct)
+	}
+	if vary := rec.Header().Get("Vary"); vary != "Accept" {
+		t.Errorf("/ Vary = %q, want Accept: caches must keep the page and the JSON apart", vary)
+	}
+	page := rec.Body.String()
+	for _, want := range []string{
+		"<h1>" + service + "</h1>",
+		"environment <b>dev</b>",
+		"version <b>0123456</b>",
+		`href="` + repository + `"`,
+		`href="https://portal.example/catalog/default/component/svc"`,
+		"/healthz",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("landing page missing %q", want)
+		}
+	}
+	if strings.Contains(page, "Deployment in Argo CD") {
+		t.Error("landing page links to Argo CD although PLATFORM_DELIVERY_URL is empty")
+	}
+
+	// Clients that don't ask for HTML keep getting JSON.
+	if ct := get(t, h, "/").Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("/ (no Accept) Content-Type = %q, want application/json", ct)
+	}
+}
+

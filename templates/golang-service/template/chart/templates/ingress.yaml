@@ -1,0 +1,46 @@
+{{- $component := .Values.platform.component }}
+{{- $environment := .Values.platform.environment }}
+{{- if and .Values.ingress.enabled $component $environment (has $environment .Values.ingress.environments) }}
+{{- $annotations := dict
+  "alb.ingress.kubernetes.io/group.name" $environment
+  "alb.ingress.kubernetes.io/scheme" "internet-facing"
+  "alb.ingress.kubernetes.io/target-type" "ip"
+  "alb.ingress.kubernetes.io/listen-ports" "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
+  "alb.ingress.kubernetes.io/ssl-redirect" "443"
+  "alb.ingress.kubernetes.io/ssl-policy" "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  "alb.ingress.kubernetes.io/healthcheck-path" "/healthz"
+  "alb.ingress.kubernetes.io/actions.metrics-not-found" "{\"type\":\"fixed-response\",\"fixedResponseConfig\":{\"contentType\":\"text/plain\",\"statusCode\":\"404\",\"messageBody\":\"404 page not found\"}}"
+}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Chart.Name }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    platform.taskapp.io/component: {{ $component | quote }}
+    platform.taskapp.io/environment: {{ $environment | quote }}
+  annotations:
+    {{- toYaml (merge (dict) .Values.ingress.annotations $annotations) | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ printf "%s.%s.%s" $component $environment .Values.platform.domain | quote }}
+      http:
+        paths:
+          # Listed first so the ALB matches it before the catch-all below:
+          # metrics stay inside the cluster.
+          - path: /metrics
+            pathType: Exact
+            backend:
+              service:
+                name: metrics-not-found
+                port:
+                  name: use-annotation
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Chart.Name }}
+                port:
+                  name: http
+{{- end }}

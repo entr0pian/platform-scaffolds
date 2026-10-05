@@ -1,6 +1,6 @@
 name: golang-service
 description: Minimal Go HTTP service scaffold — server skeleton with Prometheus metrics and JSON logs, Dockerfile, Helm chart with ServiceMonitor, and CI workflow.
-version: 0.11.0
+version: 0.12.0
 
 parameters:
   componentName:

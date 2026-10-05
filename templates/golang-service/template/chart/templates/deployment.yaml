@@ -57,10 +57,27 @@ spec:
               path: /readyz
               port: {{ .Values.service.port }}
             {{- toYaml .Values.probes.readiness | nindent 12 }}
-        {{- if .Values.bindings.database }}
+          # Shown on the landing page at /.
           env:
+            - name: APP_VERSION
+              value: {{ .Values.image.tag | quote }}
+            {{- with .Values.platform.environment }}
+            - name: PLATFORM_ENVIRONMENT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if and .Values.platform.component .Values.platform.domain }}
+            - name: PLATFORM_PORTAL_URL
+              value: "https://platform.{{ .Values.platform.domain }}/catalog/default/component/{{ .Values.platform.component }}"
+            {{- if .Values.platform.environment }}
+            - name: PLATFORM_DELIVERY_URL
+              value: "https://argocd.{{ .Values.platform.domain }}/applications/argocd/{{ .Values.platform.component }}-{{ .Values.platform.environment }}"
+            {{- end }}
+            {{- end }}
+            {{- if .Values.bindings.database }}
             - name: SERVICE_BINDING_ROOT
               value: /bindings
+            {{- end }}
+        {{- if .Values.bindings.database }}
           volumeMounts:
             - name: binding-database
               mountPath: /bindings/database

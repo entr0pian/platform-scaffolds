@@ -12,9 +12,12 @@ make run
 
 ## Endpoints
 
-- `GET /` — index: JSON with the service name and the endpoints below. It reads
-  from the `endpoints` list in `cmd/server/main.go`; add to that list whenever you
-  register a route.
+- `GET /` — index. A browser (`Accept: text/html`) gets a landing page
+  (`cmd/server/index.html`: the service, its environment and deployed version,
+  how to start developing, and links to the repository, developer portal and
+  Argo CD); any other client gets JSON with the service name and the endpoints
+  below. Both read the `endpoints` list in `cmd/server/main.go`; add to it
+  whenever you register a route. Replace the page whenever you like.
 - `GET /healthz` — liveness; always `200`, no dependencies checked.
 - `GET /readyz` — readiness; `200` if the database is unconfigured or reachable,
   `503` if `bindings.database` is set but the database can't be reached.
@@ -78,6 +81,13 @@ on `/healthz` gives the process up to 60s to come up before liveness checks
 start; timings are under `probes` in `values.yaml`. A PodDisruptionBudget
 (`maxUnavailable: 1`) keeps node drains from evicting more than one pod at a
 time.
+
+On the platform the chart also publishes the service at
+`https://{{ componentName }}.<environment>.gerodimos.dev` (in `dev` and `prod`):
+an Ingress on the environment's shared ALB, with DNS from external-dns and the
+TLS certificate found in ACM by hostname. `/metrics` is answered with a 404 at
+the ALB, so only in-cluster Prometheus can scrape it. Set `ingress.enabled:
+false` to keep the service internal; `platform.domain` changes the base domain.
 
 `helm unittest chart` runs its tests
 ([helm-unittest](https://github.com/helm-unittest/helm-unittest) plugin).

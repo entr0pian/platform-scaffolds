@@ -66,3 +66,38 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.periodSeconds
           value: 15
+
+  - it: passes the landing page its environment, version and links
+    set:
+      image.tag: 0123456789abcdef0123456789abcdef01234567
+      platform.component: svc
+      platform.environment: dev
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_VERSION
+            value: 0123456789abcdef0123456789abcdef01234567
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PLATFORM_ENVIRONMENT
+            value: dev
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PLATFORM_PORTAL_URL
+            value: https://platform.gerodimos.dev/catalog/default/component/svc
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PLATFORM_DELIVERY_URL
+            value: https://argocd.gerodimos.dev/applications/argocd/svc-dev
+
+  - it: leaves platform links out outside the platform
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: PLATFORM_PORTAL_URL
