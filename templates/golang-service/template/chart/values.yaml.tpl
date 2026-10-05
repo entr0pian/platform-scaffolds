@@ -1,4 +1,11 @@
-replicaCount: 1
+# Two pods by default, so a pod restart, node drain or rollout never leaves
+# the Service without a ready endpoint.
+replicaCount: 2
+
+# Seconds a new pod must stay Ready before the Deployment counts it as
+# available and moves the rollout on. Catches a pod that passes its first
+# readiness check and then crashes.
+minReadySeconds: 20
 
 image:
   repository: ghcr.io/{{ owner }}/{{ repositoryName }}
@@ -19,6 +26,29 @@ resources:
   limits:
     cpu: 500m
     memory: 128Mi
+
+# Probe timings. startup gives the process up to periodSeconds *
+# failureThreshold (60s) to answer /healthz before liveness takes over;
+# readiness then checks /readyz (the database, when bound) every 5s.
+probes:
+  startup:
+    periodSeconds: 2
+    failureThreshold: 30
+  readiness:
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+  liveness:
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+# Voluntary disruptions (node drains, cluster upgrades) evict at most one pod
+# at a time. maxUnavailable rather than minAvailable, so a single-replica
+# deployment can still be drained.
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
 
 bindings: {}
 

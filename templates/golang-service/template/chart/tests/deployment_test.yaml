@@ -21,3 +21,48 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources.limits.memory
           value: 512Mi
+
+  - it: runs two replicas by default
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: holds new pods Ready for minReadySeconds before counting them available
+    asserts:
+      - equal:
+          path: spec.minReadySeconds
+          value: 20
+
+  - it: never drops below replicaCount ready pods during a rollout
+    asserts:
+      - equal:
+          path: spec.strategy.rollingUpdate
+          value:
+            maxSurge: 1
+            maxUnavailable: 0
+
+  - it: gates traffic on /readyz and liveness on /healthz behind a startup probe
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /readyz
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /healthz
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe
+          value:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 2
+            failureThreshold: 30
+
+  - it: takes probe timings from values
+    set:
+      probes.readiness.periodSeconds: 15
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.periodSeconds
+          value: 15

@@ -70,7 +70,16 @@ default (`resources` in `values.yaml`); tune them to the service's real usage,
 but keep limits set: the platform's utilization metrics divide usage by the
 container's limit, so a container without one has no utilization percentage.
 
-`helm unittest chart` `helm unittest chart` runs its tests
+The chart runs `replicaCount: 2` pods and only counts a new pod as available
+once it has passed `/readyz` and stayed Ready for `minReadySeconds` (20s).
+Rollouts add a pod before removing one (`maxSurge: 1`, `maxUnavailable: 0`),
+so the Service never has fewer ready pods than `replicaCount`. A startup probe
+on `/healthz` gives the process up to 60s to come up before liveness checks
+start; timings are under `probes` in `values.yaml`. A PodDisruptionBudget
+(`maxUnavailable: 1`) keeps node drains from evicting more than one pod at a
+time.
+
+`helm unittest chart` runs its tests
 ([helm-unittest](https://github.com/helm-unittest/helm-unittest) plugin).
 
 With `observability.metrics.enabled` (default `true`), the chart adds a

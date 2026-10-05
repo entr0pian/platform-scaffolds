@@ -15,7 +15,7 @@ templates or create repositories itself — that's a future scaffolding executor
 
 | Scaffold | Path | Description |
 |---|---|---|
-| `golang-service` | `templates/golang-service` | Minimal Go 1.27 HTTP service: server skeleton with a `/` endpoint index, `/healthz`, `/readyz` and Prometheus `/metrics` (runtime, process, HTTP request and DB pool metrics), JSON logs on stdout with a per-request access log, Dockerfile, Helm chart (Deployment with default requests/limits + Service + ServiceMonitor), CI workflow with Go/chart tests and GHCR image push, `catalog-info.yaml` for Backstage discovery |
+| `golang-service` | `templates/golang-service` | Minimal Go 1.27 HTTP service: server skeleton with a `/` endpoint index, `/healthz`, `/readyz` and Prometheus `/metrics` (runtime, process, HTTP request and DB pool metrics), JSON logs on stdout with a per-request access log, Dockerfile, Helm chart (2-replica Deployment with readiness-gated rollouts, startup/readiness/liveness probes and default requests/limits + PodDisruptionBudget + Service + ServiceMonitor), CI workflow with Go/chart tests and GHCR image push, `catalog-info.yaml` for Backstage discovery |
 
 ## Directory structure
 
