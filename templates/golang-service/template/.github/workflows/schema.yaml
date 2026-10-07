@@ -1,0 +1,96 @@
+name: schema
+
+# The database schema is released separately from the code: this workflow
+# packages migrations/ as its own versioned artifact, and a DatabaseSchema in
+# the platform decides when an environment's database gets it. It runs only
+# when migrations/ changes, so every successful run on main is a schema
+# version that can be applied.
+on:
+  pull_request:
+    paths: ["migrations/**"]
+  push:
+    branches: [main]
+    paths: ["migrations/**"]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  # The platform's database-schema chart (github.com/entr0pian/helm-charts),
+  # packaged together with this repository's migrations/.
+  SCHEMA_CHART_REF: database-schema-0.1.0
+  # Atlas replays the migrations on this before they're packaged. Same major
+  # version as the platform's databases.
+  DEV_URL: postgres://postgres:pass@localhost:5432/postgres?sslmode=disable
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: pass
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Non-interactive because GitHub sets CI=true.
+      - name: Install Atlas
+        run: curl -sSf https://atlasgo.sh | ATLAS_VERSION=v1.3.3 sh
+
+      - name: atlas.sum is up to date
+        run: |
+          atlas migrate hash --dir file://migrations
+          if ! git diff --exit-code -- migrations/atlas.sum; then
+            echo "::error file=migrations/atlas.sum::atlas.sum doesn't match migrations/. Run 'atlas migrate hash --dir file://migrations' and commit the result."
+            exit 1
+          fi
+
+      # Runs every migration, in order, on an empty Postgres: catches SQL
+      # errors and files that were edited after they were hashed.
+      - name: Migrations apply cleanly
+        run: atlas migrate validate --dir file://migrations --dev-url "$DEV_URL"
+
+  publish:
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: entr0pian/helm-charts
+          ref: ${{ env.SCHEMA_CHART_REF }}
+          path: .platform-charts
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      # ghcr.io/<owner>/<repo>/schema:0.0.0-g<commit>, next to the service's
+      # image (ghcr.io/<owner>/<repo>:<commit>). Helm needs a SemVer version;
+      # the g keeps it valid even for an all-digit commit hash.
+      - name: Package
+        run: |
+          echo "REGISTRY=oci://ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+          chart="$RUNNER_TEMP/schema"
+          cp -r .platform-charts/database-schema "$chart"
+          cp -r migrations "$chart/migrations"
+          sed -i 's/^name: database-schema$/name: schema/' "$chart/Chart.yaml"
+          helm package "$chart" --version "0.0.0-g${GITHUB_SHA}" --app-version "${GITHUB_SHA}" -d "$RUNNER_TEMP"
+          # Fail before publishing if the package doesn't render.
+          helm template schema "$RUNNER_TEMP/schema-0.0.0-g${GITHUB_SHA}.tgz" \
+            --set database.remoteRef=/bindings/ci/databases/ci > /dev/null
+
+      - name: Publish
+        run: |
+          echo '${{ secrets.GITHUB_TOKEN }}' | helm registry login ghcr.io -u '${{ github.actor }}' --password-stdin
+          helm push "$RUNNER_TEMP/schema-0.0.0-g${GITHUB_SHA}.tgz" "$REGISTRY"
