@@ -1,208 +1,111 @@
 # platform-scaffolds
 
-Source-of-truth repository for the platform's application scaffolds — the templates
-used to generate the initial contents of a new component's repository.
+Versioned templates for new service repositories. When a service is onboarded,
+the platform creates its GitHub repository and renders one of these templates
+into it as a single commit. The result already builds, ships and shows up in
+monitoring and the developer portal.
 
 ```
-scaffold.yaml + template/ + parameters → rendered application repository
+scaffold.yaml + template/ + parameters  →  a working service repository
 ```
 
-This repo only defines *what a generated repository looks like*. It does not render
-templates or create repositories itself — that's a future scaffolding executor's job
-(see [Future integration](#future-integration-with-component-operator) below).
+This repo only defines what a new repository looks like.
+[scaffold-operator](https://github.com/entr0pian/scaffold-operator) renders it.
 
-## Available scaffolds
+## Where it fits
 
-| Scaffold | Path | Description |
-|---|---|---|
-| `golang-service` | `templates/golang-service` | Minimal Go 1.27 HTTP service: server skeleton with a `/` landing page (HTML for browsers, a JSON endpoint index otherwise), `/healthz`, `/readyz` and Prometheus `/metrics` (runtime, process, HTTP request and DB pool metrics), JSON logs on stdout with a per-request access log, Dockerfile, Helm chart (2-replica Deployment with readiness-gated rollouts, startup/readiness/liveness probes and default requests/limits + PodDisruptionBudget + Service + public HTTPS Ingress at `<component>.<env>.gerodimos.dev` + ServiceMonitor), CI workflow with Go/chart tests and GHCR image push, `catalog-info.yaml` for Backstage discovery |
-
-## Directory structure
-
-```
-platform-scaffolds/
-├── README.md
-└── templates/
-    └── <scaffold-name>/
-        ├── scaffold.yaml       # metadata + parameter contract
-        └── template/           # files to render into the new repository
+```mermaid
+flowchart LR
+    BS["Backstage<br/>Onboard Service<br/>(template + version picker)"] -->|PR| AR["application-repositories"]
+    AR -->|Argo CD| C["Component<br/>spec.scaffold"]
+    C --> CO["component-operator"]
+    CO --> SR["ScaffoldRequest"]
+    SR --> SO["scaffold-operator"]
+    PS[("platform-scaffolds<br/>tag golang-service/v0.12.0")] -->|read| SO
+    SO -->|one commit| GH[("new service repo")]
+    GH -->|"CI: test, push image"| RO["release-operator<br/>deploys to dev"]
 ```
 
-Each scaffold is self-contained: its own `scaffold.yaml` and `template/` directory.
-Adding a new scaffold means adding a new `templates/<name>/` directory — nothing else
-in this repo needs to change.
+Backstage's version picker lists this repo's release tags and defaults to the
+newest. [component-operator](https://github.com/entr0pian/component-operator)
+copies the chosen template and version into a `ScaffoldRequest`, and
+scaffold-operator records the exact commit it rendered from.
 
-## Scaffold manifest (`scaffold.yaml`)
+## `golang-service`
 
-Each scaffold declares its identity, version, and the parameters it requires:
+The one template today. A rendered repository contains:
 
-```yaml
-name: golang-service
-version: 0.1.0
+| Area | What you get |
+|---|---|
+| Service | Go HTTP server: `/` landing page (HTML for browsers, a JSON endpoint index otherwise), `/healthz`, `/readyz`, JSON logs with a per-request access log |
+| Metrics | `/metrics` with Go runtime, process, HTTP request count/latency (bounded `route` label) and DB pool metrics |
+| Helm chart | 2-replica Deployment with startup/readiness/liveness probes and default requests/limits, PodDisruptionBudget, Service, public HTTPS Ingress at `<component>.<env>.gerodimos.dev`, ServiceMonitor, and an ExternalSecret for a database binding when a `Release` enables one |
+| CI | Go build/test, `helm lint` and helm-unittest, then an image pushed to `ghcr.io/<owner>/<repo>:<sha>` |
+| Catalog | `catalog-info.yaml`, so Backstage discovers the service |
 
-parameters:
-  componentName:
-    type: string
-    required: true
+The platform contract is built in. The chart labels every workload with
+`platform.taskapp.io/{component,environment}`, which Argo CD passes in. The
+ServiceMonitor turns those into `component`/`environment` metric labels, so
+platform dashboards and Backstage's Metrics tab pick the service up with no
+per-service setup.
 
-  repositoryName:
-    type: string
-    required: true
+## Layout and parameters
 
-  owner:
-    type: string
-    required: true
-
-  componentOwner:
-    type: string
-    required: true
+```
+templates/<template>/
+├── scaffold.yaml   # name, version, required parameters
+└── template/       # files rendered into the new repository
 ```
 
-`parameters` is the contract a caller (eventually `component-operator`, see below) must
-satisfy to render the scaffold. `golang-service` currently requires:
+`golang-service` takes four parameters:
 
 | Parameter | Used for |
 |---|---|
-| `componentName` | Service/binary name, Helm chart name, Kubernetes resource names |
-| `repositoryName` | Go module path (`github.com/{owner}/{repositoryName}`) |
-| `owner` | GitHub org/user the generated repository belongs to; also used in the module path |
-| `componentOwner` | The platform Component's team owner (distinct from `owner`, the GitHub org/user); rendered into `catalog-info.yaml`'s `spec.owner` |
+| `componentName` | Binary, chart and Kubernetes resource names |
+| `repositoryName` | Go module path `github.com/<owner>/<repositoryName>`, default image repository |
+| `owner` | GitHub account of the repository (module path, image repository) |
+| `componentOwner` | The owning team, written to `catalog-info.yaml` |
+
+Adding a template means adding a `templates/<name>/` directory. Nothing else
+in the repo changes.
 
 ## Templating
 
-Files under `template/` that need substitution carry a `.tpl` suffix and contain plain
-`{{ parameterName }}` placeholders — e.g. `{{ componentName }}`, `{{ repositoryName }}`,
-`{{ owner }}`. Files that don't need substitution (`Makefile`, `.gitignore`) are checked
-in as-is, without the `.tpl` suffix and without placeholders.
+Rendering is deliberately simple:
 
-This repo intentionally does not implement or depend on a specific rendering engine —
-the placeholder syntax is simple enough for a renderer to satisfy with straight string
-substitution, a text/template engine, or anything else a future scaffolding executor
-chooses. `.tpl` → real filename (`go.mod.tpl` → `go.mod`) is the only other rule a
-renderer needs to follow. A renderer only needs to replace the exact, known parameter
-names (`componentName`, `repositoryName`, `owner`) — it must not try to parse or
-evaluate every `{{ ... }}` it finds in a file.
+- Only files ending in `.tpl` are rendered, and the suffix is dropped
+  (`go.mod.tpl` → `go.mod`).
+- Only exact `{{ parameterName }}` placeholders for declared parameters are
+  replaced. Everything else is copied byte for byte.
 
-That last point matters concretely for `chart/templates/*.yaml`, which contains
-`{{ }}`-delimited syntax that belongs to a *different* engine and must survive scaffold
-rendering untouched: `deployment.yaml` and `service.yaml` are plain Helm templates
-(`{{ .Chart.Name }}`, `{{ .Values.image.repository }}`, ...), rendered by Helm at
-install time, not by the scaffold renderer — so they're checked in without a `.tpl`
-suffix and are never touched by scaffold rendering at all.
-
-The same applies to `chart/templates/servicemonitor.yaml`. The chart's helm-unittest
-suite goes the other way: `chart/tests/servicemonitor_test.yaml.tpl` *is* a `.tpl`,
-because its assertions need the rendered chart name (`{{ componentName }}`) and
-contain no other `{{ }}` syntax.
-
-`.github/workflows/ci.yaml` avoids the same collision a different way: it's checked in
-without a `.tpl` suffix and contains **no scaffold placeholders at all**. It derives
-the image name entirely from GitHub Actions' own `github.repository` context
-(`owner/repo`, lowercased) at workflow run time, rather than from `owner` /
-`repositoryName` baked in at scaffold time — so it needs zero rendering and works
-identically regardless of which account or org actually owns the generated repository.
-`owner` is still a required scaffold parameter, but only for `go.mod.tpl`'s module path
-and `values.yaml.tpl`'s default image repository — neither Go modules nor Helm have
-access to GitHub Actions context, so those two genuinely need it substituted once at
-scaffold time.
-
-Example substitutions:
-
-| Template | Rendered |
-|---|---|
-| `go.mod.tpl` | `module github.com/entr0pian/orders` |
-| `README.md.tpl` | `# orders` |
-| `chart/Chart.yaml.tpl` | `name: orders` |
-
-## Validating a scaffold locally
-
-`scripts/render.py` renders a scaffold the way scaffold-operator does (`.tpl`
-suffix stripped, exact `{{ param }}` placeholders substituted, everything else
-copied byte-for-byte), so a change can be tested on a real generated repository
-before it's tagged:
-
-```bash
-scripts/render.py golang-service /tmp/orders \
-  componentName=orders repositoryName=orders owner=entr0pian componentOwner=team-a
-cd /tmp/orders
-go test ./...            # Go 1.27
-helm lint chart && helm unittest chart
-docker build -t orders .
-```
+That second rule is what lets Helm templates (`{{ .Values.image.tag }}`) and
+GitHub Actions expressions (`${{ github.repository }}`) live in the template
+untouched: they belong to engines that run later. The CI workflow has no
+placeholders at all and derives its image name from the repository at run
+time.
 
 ## Versioning
 
-Each scaffold is versioned independently, following [Semantic Versioning](https://semver.org/).
-`golang-service` versions look like `0.1.0`, `0.2.0`, `1.0.0`, etc.
+Each template is versioned on its own with SemVer, as an immutable tag
+`<template>/v<version>` (for example `golang-service/v0.12.0`). `main` holds the
+latest source, and there are no per-version directories. On every tag,
+`release.yaml` fails unless `scaffold.yaml`'s `version` matches the tag.
 
-Versions are **not** separate directories — `main` always holds the latest scaffold
-source, and Git history/tags preserve every released version.
+Scaffolding happens **once**. After the first commit the service team owns the
+repository, and nothing re-applies a template to it. Moving an existing
+service to a newer template version is an ordinary pull request in that
+service's repository.
 
-Every release is an immutable Git tag of the form:
+## Testing a change
 
+`scripts/render.py` renders a template the same way scaffold-operator does,
+so a change can be tried on a real generated repository before it's tagged:
+
+```sh
+scripts/render.py golang-service /tmp/orders \
+  componentName=orders repositoryName=orders owner=entr0pian componentOwner=team-a
+cd /tmp/orders
+go test ./...
+helm lint chart && helm unittest chart
+docker build -t orders .
 ```
-<scaffold-name>/v<version>
-```
-
-e.g. `golang-service/v0.1.0`. The `version` field in `templates/golang-service/scaffold.yaml`
-at the time of tagging must equal `<version>` in the tag — this is enforced by
-`.github/workflows/release.yaml`, which fails the tag's CI run if they don't match.
-
-### Retrieving a specific scaffold version
-
-```bash
-git clone https://github.com/entr0pian/platform-scaffolds.git
-cd platform-scaffolds
-git checkout golang-service/v0.1.0
-```
-
-or, without a full clone:
-
-```bash
-git archive --remote=https://github.com/entr0pian/platform-scaffolds.git \
-  golang-service/v0.1.0 templates/golang-service | tar -x
-```
-
-## Future integration with component-operator
-
-Not implemented yet — this section records the intended shape so this repo's contract
-(`scaffold.yaml` + `template/` + parameters, immutable version tags) stays compatible
-with it.
-
-```
-Component CR
-    ↓
-component-operator          — decides WHEN and WHAT to scaffold
-    ↓
-GitHub XR
-    ↓
-Crossplane creates repository
-    ↓
-repository becomes Ready
-    ↓
-one-time scaffolding operation
-    ↓
-fetch platform-scaffolds version  — this repo: defines WHAT the generated repo looks like
-    ↓
-render template                   — scaffolding executor: performs the render + commit
-    ↓
-initial commit to new repository
-```
-
-Scaffolding is a **one-time bootstrap**, not continuous reconciliation: once the initial
-commit lands, developers own the repository contents, and nothing here re-applies changes
-to it later. A future `Component` spec is expected to select a scaffold and pinned version
-like:
-
-```yaml
-spec:
-  repository:
-    name: orders
-  scaffold:
-    template: golang-service
-    version: "0.1.0"
-```
-
-Whether the render/commit step lives inside `component-operator` or a separate executor
-it delegates to is intentionally left open — this repo's job stops at defining the
-scaffold contract.
