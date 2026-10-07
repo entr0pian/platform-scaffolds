@@ -21,7 +21,7 @@ flowchart LR
     C --> CO["component-operator"]
     CO --> SR["ScaffoldRequest"]
     SR --> SO["scaffold-operator"]
-    PS[("platform-scaffolds<br/>tag golang-service/v0.12.0")] -->|read| SO
+    PS[("platform-scaffolds<br/>tag golang-service/v0.13.0")] -->|read| SO
     SO -->|one commit| GH[("new service repo")]
     GH -->|"CI: test, push image"| RO["release-operator<br/>deploys to dev"]
 ```
@@ -41,6 +41,7 @@ The one template today. A rendered repository contains:
 | Metrics | `/metrics` with Go runtime, process, HTTP request count/latency (bounded `route` label) and DB pool metrics |
 | Helm chart | 2-replica Deployment with startup/readiness/liveness probes and default requests/limits, PodDisruptionBudget, Service, public HTTPS Ingress at `<component>.<env>.gerodimos.dev`, ServiceMonitor, and an ExternalSecret for a database binding when a `Release` enables one |
 | CI | Go build/test, `helm lint` and helm-unittest, then an image pushed to `ghcr.io/<owner>/<repo>:<sha>` |
+| Database schema | `migrations/` (SQL files + `atlas.sum`, applied by Atlas) and a `schema` workflow that validates them on Postgres 16 and publishes `ghcr.io/<owner>/<repo>/schema:0.0.0-g<sha>`, the platform's `database-schema` chart with the migrations inside. Released separately from the code |
 | Catalog | `catalog-info.yaml`, so Backstage discovers the service |
 
 The platform contract is built in. The chart labels every workload with
@@ -82,7 +83,8 @@ That second rule is what lets Helm templates (`{{ .Values.image.tag }}`) and
 GitHub Actions expressions (`${{ github.repository }}`) live in the template
 untouched: they belong to engines that run later. The CI workflow has no
 placeholders at all and derives its image name from the repository at run
-time.
+time. The schema workflow works the same way, and pins the platform's
+`database-schema` chart by its tag in `helm-charts`.
 
 ## Versioning
 

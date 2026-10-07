@@ -66,6 +66,40 @@ line once it completes, from `internal/accesslog`:
 matched to its series; `path` is the raw request path. The query string is never
 logged, since it can carry tokens.
 
+## Database schema
+
+The database schema lives in `migrations/`: plain SQL files that Atlas applies
+once each, in file-name order. It's released separately from the code. Deploying
+a version of the service never changes the schema, and rolling one back never
+undoes a migration. A schema version is applied to an environment's database on
+its own, from the developer portal (**Apply database schema**).
+
+Adding a change:
+
+1. Add a new file, named `<UTC timestamp>_<what it does>.sql`, e.g.
+   `20261015093000_add_items_price.sql`. Never edit a file that has been applied
+   anywhere; change the schema with another file.
+2. Run `atlas migrate hash --dir file://migrations` and commit the updated
+   `atlas.sum` with it ([install Atlas](https://atlasgo.io/getting-started)).
+3. Push. `.github/workflows/schema.yaml` checks `atlas.sum`, runs every
+   migration on an empty Postgres 16, and on `main` publishes the schema as
+   `ghcr.io/<owner>/<repo>/schema:0.0.0-g<commit>`. Every commit on `main` that
+   changed `migrations/` and passed is a version you can apply.
+
+Because the schema and the code move independently, both versions of the code
+that can be running (before and after a deploy, or after a rollback) must work
+with whatever schema is applied. Change it in two steps:
+
+- **Additive first** (new table, new nullable column, new index): apply it
+  before the code that uses it. The running version just doesn't see it.
+- **Destructive later** (drop or rename a column the code reads): only once no
+  version that reads it can be deployed again.
+
+The platform applies migrations forward only. To undo one, add a new migration
+that reverses it.
+
+`migrations/20261007000000_create_items.sql` is an example: replace or extend it.
+
 ## Deployment
 
 Helm chart lives in `chart/`. It sets CPU/memory requests and limits by
